@@ -5,13 +5,18 @@
   "description": "MG-TRACK - Sistema de Rastreamento Veicular e Gestao",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "reset": "node server.js --reset"
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --env-file-if-exists=.env --watch server.js",
+    "reset": "node --env-file-if-exists=.env server.js --reset"
   },
   "dependencies": {
-    "express": "^4.21.2"
+    "express": "^5.1.0",
+    "pg": "^8.16.0"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.12"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.3"
   }
 }

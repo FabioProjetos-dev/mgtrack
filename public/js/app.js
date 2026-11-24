@@ -27,8 +27,7 @@ function renderLogin() {
     <h3>Acesse sua conta</h3>
     <div class="form-group"><label class="lb">Usuário</label><input class="input" name="login" autocomplete="username" required autofocus></div>
     <div class="form-group"><label class="lb">Senha</label><input class="input" type="password" name="senha" autocomplete="current-password" required></div>
-    <button class="btn btn-primary btn-block"><i class="fa fa-right-to-bracket"></i> Entrar</button>
-    <p class="hint">Demonstração: <b>admin</b> / <b>admin123</b></p></form></div>`;
+    <button class="btn btn-primary btn-block"><i class="fa fa-right-to-bracket"></i> Entrar</button></form></div>`;
   $('[data-login]').onsubmit = async e => {
     e.preventDefault();
     const f = e.target, btn = $('button', f);

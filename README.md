@@ -1,63 +1,85 @@
 # MG-TRACK — Rastreamento Veicular e Gestão
 
 Sistema web construído a partir de [mg-track-sistema.md](mg-track-sistema.md): mesmo menu, rotas, módulos e paleta de cores.
+Hospedagem na **Vercel** com banco **PostgreSQL** (Neon ou Supabase). O banco começa **vazio**: só são criados o usuário administrador e as 5 categorias de OS do sistema atual.
 
-## Publicar online (para demonstração)
+## Publicar na Vercel + Neon
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/FabioProjetos-dev/mgtrack)
+1. Em [vercel.com](https://vercel.com), entre com o GitHub e clique em **Add New → Project**. Importe o repositório `FabioProjetos-dev/mgtrack`. Em *Framework Preset*, deixe **Other**. **Ainda não faça o deploy.**
+2. Em **Environment Variables**, adicione:
+   - `ADMIN_PASSWORD`: senha do administrador (login `admin`, ou o que você definir em `ADMIN_LOGIN`).
+   - `INTEGRATION_TOKEN`: um token longo e aleatório para a API dos rastreadores (opcional).
+3. Clique em **Deploy**.
+4. No projeto, abra a aba **Storage → Create Database → Neon (Postgres)**. Escolha a região **São Paulo (sa-east-1)** e conecte ao projeto. A Vercel cria a variável `DATABASE_URL` sozinha.
+5. Vá em **Deployments → ⋯ → Redeploy** para que o app passe a usar o banco.
+6. Acesse o link do projeto e entre com `admin` e a senha definida. As tabelas são criadas no primeiro acesso.
+7. Troque a senha em **Minha Conta**.
 
-Clique no botão, entre com a sua conta do GitHub e confirme. Em poucos minutos o Render gera um link `https://<nome>.onrender.com`.
-No plano gratuito o serviço "dorme" após 15 min sem acesso (o primeiro acesso seguinte leva ~1 min) e os dados voltam ao estado de demonstração a cada reinício.
+**Usando Supabase em vez de Neon:** em Supabase → *Project Settings → Database → Connection string*, copie a string do **Transaction pooler** (porta 6543). Na Vercel, cadastre-a como `DATABASE_URL`.
 
-## Como executar
+> As variáveis `ADMIN_LOGIN` e `ADMIN_PASSWORD` só valem na **primeira** inicialização, enquanto o banco ainda não tem usuários.
 
-Requisitos: **Node.js 22.5+** (usa o SQLite nativo `node:sqlite`).
+## Desenvolvimento local
 
 ```bash
 npm install
-npm start            # http://localhost:3000
-npm run reset        # recria o banco com dados de demonstração
+cp .env.example .env   # opcional: coloque a DATABASE_URL do Neon/Supabase
+npm run dev            # http://localhost:3000
 ```
 
-Login de demonstração: **admin / admin123** (outros usuários do seed usam a senha `123456`).
+Sem `DATABASE_URL`, o servidor local usa um Postgres embutido (PGlite) gravado em `data/pg`, sem precisar instalar nada.
+`npm run reset` **apaga todas as tabelas** do banco configurado e recria a estrutura vazia.
 
-Variáveis de ambiente: `PORT` (padrão 3000) e `SIMULADOR=0` para desligar o simulador de rastreadores.
+## Integração com rastreadores
 
-## O que está implementado
+Não há mais simulador. As posições chegam pela API de integração, chamada pelo servidor de comunicação dos rastreadores (GT06, Suntech, Teltonika etc.):
 
-- **Layout** do documento: header `#2B3643` com badges (atendimentos, contas vencidas, notificações, novidades), sidebar `#364150` recolhível com busca, item ativo `#36C6D3`, Open Sans 14px e Font Awesome. Também funciona no celular.
-- **Dashboard de Gestão**: os 4 cards, os gauges de conectividade (Online / ≤24h / ≤36h / +36h, que abrem o relatório ao clicar), o gráfico de vendas por consultor com filtro de mês, o gráfico de OS por mês e categoria (filtros de técnicos, estoque, categorias, período e status), os widgets de saúde dos equipamentos e os aniversariantes.
-- **Dashboard Financeiro** e **Dashboard de Atendimentos** (com NPS).
-- **Painel de Monitoramento** com mapa (Leaflet/OpenStreetMap), filtros, cercas, comandos de bloqueio e desbloqueio no popup e eventos para tratar. Também há o **Painel 2**, em grade.
-- **Cadastros** (CRUD completo) de todos os módulos do menu: pesquisa, filtros, ordenação, paginação, exportação CSV e impressão.
+```http
+POST /api/integracao/posicoes
+Authorization: Bearer <INTEGRATION_TOKEN>
+Content-Type: application/json
+
+[{ "imei": "864000000000001", "lat": -19.92, "lng": -43.94, "velocidade": 62, "ignicao": true,
+   "odometro": 15230.5, "data": "2026-11-24 15:30:00", "evento": "Botão de pânico" }]
+```
+
+- O `imei` precisa estar cadastrado em **Equipamentos** e vinculado a um **Veículo**.
+- `data` é opcional e usa o horário de Brasília. `evento` também é opcional e aceita os tipos do cadastro de eventos.
+- A mudança de ignição e o excesso de velocidade (acima do limite do veículo) viram eventos automaticamente.
+- A resposta traz os **comandos pendentes** de cada veículo, que passam a "Enviado". Depois de executar um comando, informe o resultado em `POST /api/integracao/comandos/{id}/resposta` com `{ "status": "Confirmado" }` ou `{ "status": "Falhou" }`.
+
+## Funcionalidades
+
+- **Layout** do documento: header com contadores, sidebar recolhível com busca, paleta `#2B3643` / `#364150` / `#36C6D3`. Também funciona no celular.
+- **Dashboards** de Gestão (cards, conectividade, vendas, OS, saúde dos equipamentos, aniversariantes), Financeiro e de Atendimentos.
+- **Monitoramento** em mapa e em grade, com cercas, comandos e tratamento de eventos.
+- **Cadastros** de todos os módulos do menu, com pesquisa, filtros, ordenação, paginação, exportação CSV e impressão.
 - **Regras de negócio**:
-  - Quando uma OS de instalação é finalizada, o equipamento passa para "Instalado" e é vinculado ao veículo. Na retirada, ele é desvinculado.
-  - Uma transferência move o equipamento de estoque.
-  - O contrato tem a ação "Gerar 12 mensalidades", que cria as contas a receber.
-  - Na conta a receber é possível dar baixa, gerar cobrança e emitir a nota fiscal.
-  - Comandos enviados a equipamentos offline ficam pendentes até a reconexão.
-  - Toda inclusão, alteração e exclusão fica registrada no log de auditoria.
-- **42 relatórios** calculados: telemetria, conectividade, financeiro, comercial, atendimento, manutenção e sinistros.
-- **Agenda de OS** (calendário), **estoque** por técnico, **envio de comandos em massa**, **câmeras**, **novidades** e **minha conta**.
+  - a OS finalizada de instalação ou retirada vincula ou desvincula o equipamento do veículo;
+  - a transferência move o equipamento de estoque;
+  - o contrato gera as mensalidades;
+  - na conta a receber é possível dar baixa, gerar cobrança e criar a nota fiscal;
+  - toda alteração fica registrada no log de auditoria.
+- **42 relatórios**, agenda de OS, estoque por técnico, comandos em massa e para equipamentos offline, câmeras, novidades e minha conta.
 
 ## Estrutura
 
 ```
-server.js            Express: autenticação por sessão (cookie httpOnly, senha com scrypt) e montagem das rotas
-src/schema.js        Esquema único das entidades → gera tabelas, API e formulários
-src/db.js            SQLite (data/mgtrack.db) e migração automática
-src/crud.js          API REST genérica, regras de negócio (hooks) e ações
-src/dashboard.js     Dashboards, header e dados do monitoramento
+api/index.js         Função serverless da Vercel (atende /api/*)
+server.js            Servidor local
+src/app.js           App Express: sessão (cookie httpOnly, scrypt), rotas
+src/db.js            Conexão Postgres/PGlite, migração automática e usuário inicial
+src/schema.js        Esquema único das entidades → tabelas, API e formulários
+src/crud.js          API REST genérica, regras de negócio e ações
+src/dashboard.js     Dashboards, header e monitoramento
 src/reports.js       Relatórios
-src/seed.js          Dados de demonstração
-src/simulator.js     Simulador de rastreadores (posições, eventos e fila de comandos)
-public/              SPA (HTML/CSS/JS puro, sem build)
+src/integration.js   API para os rastreadores
+public/              Front-end (HTML/CSS/JS puro, servido pela CDN da Vercel)
 ```
 
-Para incluir um campo ou um módulo, edite `src/schema.js`. A tabela é migrada sozinha e a tela é gerada automaticamente. Para colocar a tela no menu, adicione uma entrada em `public/js/menu.js`.
+Para incluir um campo ou módulo, edite `src/schema.js`. A coluna é criada sozinha no próximo acesso.
 
-## Próximos passos para produção
+## Pendências para produção
 
-- Trocar `src/simulator.js` pela integração real com o servidor de comunicação dos rastreadores (protocolos GT06, Suntech, Teltonika etc.).
-- Aplicar as permissões por grupo (hoje o cadastro existe, mas todos os usuários veem todos os módulos).
-- Integrar os gateways de verdade: boleto/Pix, NFS-e da prefeitura, Serasa, SMS, WhatsApp e push.
+- Aplicar as permissões por grupo (hoje o cadastro existe, mas todos os usuários veem tudo).
+- Integrar os gateways de verdade: boleto/Pix, NFS-e da prefeitura, Serasa, SMS, WhatsApp e push. Hoje eles só ficam registrados no sistema.
