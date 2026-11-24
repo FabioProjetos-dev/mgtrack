@@ -2,6 +2,13 @@
 
 Sistema web construído a partir de [mg-track-sistema.md](mg-track-sistema.md): mesmo menu, rotas, módulos e paleta de cores.
 
+## Publicar online (para demonstração)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/FabioProjetos-dev/mgtrack)
+
+Clique no botão, entre com a sua conta do GitHub e confirme. Em poucos minutos o Render gera um link `https://<nome>.onrender.com`.
+No plano gratuito o serviço "dorme" após 15 min sem acesso (o primeiro acesso seguinte leva ~1 min) e os dados voltam ao estado de demonstração a cada reinício.
+
 ## Como executar
 
 Requisitos: **Node.js 22.5+** (usa o SQLite nativo `node:sqlite`).

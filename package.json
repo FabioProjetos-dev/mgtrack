@@ -1,1 +1,17 @@
-{"name":"mg-track","version":"1.0.0","private":true,"description":"MG-TRACK - Sistema de Rastreamento Veicular e Gestao","main":"server.js","scripts":{"start":"node server.js","reset":"node server.js --reset"},"dependencies":{"express":"^4.21.2"}}
+{
+  "name": "mg-track",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MG-TRACK - Sistema de Rastreamento Veicular e Gestao",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "reset": "node server.js --reset"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

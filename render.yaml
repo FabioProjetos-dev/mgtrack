@@ -1,0 +1,13 @@
+# Blueprint do Render: publica o MG-TRACK como serviço web Node.js
+services:
+  - type: web
+    name: mgtrack
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 24
