@@ -80,6 +80,17 @@ async function migrate() {
 
 // Dados iniciais mínimos: somente o administrador (o banco começa zerado).
 async function bootstrap() {
+  // Recuperação de acesso: com ADMIN_RESET=1, redefine a senha do administrador para ADMIN_PASSWORD
+  // (remova ADMIN_RESET depois de entrar, senão a senha volta a ser redefinida a cada inicialização).
+  if (process.env.ADMIN_RESET === '1' && process.env.ADMIN_PASSWORD) {
+    const login = process.env.ADMIN_LOGIN || 'admin';
+    const u = await one('SELECT id FROM usuarios WHERE login = ?', [login]);
+    if (u) {
+      await query('UPDATE usuarios SET senha = ?, ativo = 1 WHERE id = ?', [hashPassword(process.env.ADMIN_PASSWORD), u.id]);
+      await query('DELETE FROM sessoes WHERE usuario_id = ?', [u.id]);
+      console.log(`Senha do usuário "${login}" redefinida via ADMIN_RESET.`);
+    }
+  }
   if ((await one('SELECT COUNT(*) n FROM usuarios')).n > 0) return;
   const grupo = await one(`INSERT INTO grupos_permissao (nome, descricao, permissoes) VALUES ('Administradores', 'Acesso total', 'Todos') RETURNING id`);
   await query(`INSERT INTO usuarios (nome, login, email, senha, grupo_permissao_id, ativo) VALUES ('Administrador', ?, NULL, ?, ?, 1)`,
