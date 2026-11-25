@@ -14,7 +14,15 @@ app.set('trust proxy', true);
 app.use(express.json({ limit: '1mb' }));
 
 // Garante esquema e usuário inicial antes de qualquer chamada à API
-app.use('/api', async (req, res, next) => { try { await ready(); next(); } catch (e) { next(e); } });
+app.use('/api', async (req, res, next) => {
+  try { await ready(); next(); } catch (e) {
+    console.error('[banco]', e);
+    // Mostra o motivo da falha de conexão/inicialização do banco (sem expor a URL de conexão)
+    const err = new Error(e.status ? e.message : `Falha ao conectar no banco de dados: ${e.message}`);
+    err.status = 503;
+    next(err);
+  }
+});
 
 const cookies = req => Object.fromEntries((req.headers.cookie || '').split(';').filter(c => c.includes('=')).map(c => {
   const i = c.indexOf('='); return [c.slice(0, i).trim(), decodeURIComponent(c.slice(i + 1).trim())];
@@ -85,7 +93,8 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use((err, req, res, next) => {
   const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
   if (status >= 500) console.error(err);
-  res.status(status).json({ error: status >= 500 ? 'Erro interno do servidor' : err.message });
+  // Erros inesperados (sem status definido) não expõem detalhes; os tratados mostram sua mensagem
+  res.status(status).json({ error: err.status || status < 500 ? err.message : 'Erro interno do servidor' });
 });
 
 module.exports = app;

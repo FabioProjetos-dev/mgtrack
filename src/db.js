@@ -22,7 +22,17 @@ function getDriver() {
     const { Pool, types } = require('pg');
     for (const [oid, fn] of Object.entries(PARSERS)) types.setTypeParser(+oid, fn);
     const local = /localhost|127\.0\.0\.1/.test(url);
-    const pool = new Pool({ connectionString: url, max: process.env.VERCEL ? 3 : 10, ssl: local ? false : { rejectUnauthorized: false } });
+    // Os parâmetros ssl* da URL (ex.: sslmode=require do Neon/Supabase) sobrescrevem a opção "ssl" do driver
+    // e fazem ele exigir validação completa do certificado — o que falha no pooler do Supabase.
+    // Removemos e definimos o SSL explicitamente (conexão continua criptografada).
+    let connectionString = url;
+    try {
+      const u = new URL(url);
+      for (const k of ['sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'uselibpqcompat']) u.searchParams.delete(k);
+      connectionString = u.toString();
+    } catch { /* mantém a URL original */ }
+    const pool = new Pool({ connectionString, max: process.env.VERCEL ? 3 : 10, ssl: local ? false : { rejectUnauthorized: false } });
+    pool.on('error', e => console.error('[pg pool]', e.message));
     driver = { kind: 'postgres', query: (sql, p) => pool.query(sql, p) };
   } else if (process.env.VERCEL) {
     const err = new Error('Banco de dados não configurado: conecte o Neon/Supabase ao projeto na Vercel (variável DATABASE_URL) e faça um novo deploy.');
