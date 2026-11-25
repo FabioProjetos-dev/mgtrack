@@ -84,8 +84,10 @@ async function bootstrap() {
   // (remova ADMIN_RESET depois de entrar, senão a senha volta a ser redefinida a cada inicialização).
   if (process.env.ADMIN_RESET === '1' && process.env.ADMIN_PASSWORD) {
     const login = process.env.ADMIN_LOGIN || 'admin';
-    const u = await one('SELECT id FROM usuarios WHERE login = ?', [login]);
-    if (u) {
+    const u = await one('SELECT id, senha FROM usuarios WHERE login = ?', [login]);
+    // Só redefine se a senha atual for diferente (cada instância serverless executa isto ao iniciar;
+    // sem essa checagem as sessões abertas seriam derrubadas a cada nova instância)
+    if (u && !checkPassword(process.env.ADMIN_PASSWORD, u.senha)) {
       await query('UPDATE usuarios SET senha = ?, ativo = 1 WHERE id = ?', [hashPassword(process.env.ADMIN_PASSWORD), u.id]);
       await query('DELETE FROM sessoes WHERE usuario_id = ?', [u.id]);
       console.log(`Senha do usuário "${login}" redefinida via ADMIN_RESET.`);
