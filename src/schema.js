@@ -12,16 +12,23 @@ const CANAIS = ['SMS','WhatsApp','E-mail','Push'];
 
 const E = {
   // ───────────── Pessoas
+  // Campos iguais ao cadastro de clientes do LeandroLoc (+ seção de rastreamento usada pelo MG-TRACK)
   pessoas: { label: 'Pessoa', plural: 'Pessoas', title: 'nome', icon: 'fa-user',
     fields: [
-      F('nome','Nome / Razão social','text',REQ), F('tipo_pessoa','Tipo','select',['Física','Jurídica']),
-      F('cpf_cnpj','CPF/CNPJ'), F('modalidade','Modalidade','select',['Comodato','Plataforma']),
-      F('email','E-mail','email'), F('telefone','Telefone','tel'), F('data_nascimento','Nascimento / Fundação','date'),
-      F('cidade','Cidade'), F('uf','UF','select',UF), F('endereco','Endereço','textarea'),
+      F('nome','Nome completo','text',{ req: true, full: true, section: 'Dados pessoais' }),
+      F('cpf_cnpj','CPF','text',{ ph: '000.000.000-00' }), F('rg','RG'),
+      F('data_nascimento','Data de nascimento','date'), F('cnh','Nº CNH'),
+      F('cnh_categoria','Categoria CNH','select',['A','AB','AC','AD','AE']), F('cnh_validade','Validade CNH','date'),
+      F('telefone','Telefone / WhatsApp','tel',{ section: 'Contato e endereço' }), F('telefone2','Telefone (referência)','tel'),
+      F('email','E-mail','email',{ full: true }), F('endereco','Endereço','text',{ full: true }),
+      F('bairro','Bairro'), F('cep','CEP'), F('cidade','Cidade'), F('uf','UF','select',UF),
+      F('status','Situação','select',{ options: ['Ativo','Inativo','Pendente'], def: 'Ativo' }),
+      F('observacoes','Observações','textarea'),
+      F('modalidade','Modalidade','select',{ options: ['Comodato','Plataforma'], section: 'Rastreamento' }),
       F('categoria_id','Categoria','ref','categorias_pessoa'), F('grupo_id','Grupo','ref','grupos_pessoa'),
-      F('status','Status','select',{ options: ['Ativo','Inativo','Pendente'], def: 'Ativo' }),
+      F('tipo_pessoa','Tipo','select',{ options: ['Física','Jurídica'], hidden: true }),
     ],
-    list: ['nome','cpf_cnpj','modalidade','telefone','cidade','categoria_id','status'], search: ['nome','cpf_cnpj','email','telefone','cidade'] },
+    list: ['nome','cpf_cnpj','telefone','cnh','cnh_validade','cidade','status'], search: ['nome','cpf_cnpj','telefone','cnh','email','cidade'] },
   usuarios: { label: 'Usuário', plural: 'Usuários', title: 'nome', icon: 'fa-user-shield',
     fields: [
       F('nome','Nome','text',REQ), F('login','Login','text',REQ), F('email','E-mail','email'),

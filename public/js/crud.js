@@ -122,7 +122,7 @@ function renderCrud(el, route) {
 
 function inputHTML(f, v, readonly) {
   const dis = readonly ? 'disabled' : '';
-  const name = `name="${f.name}"`;
+  const name = `name="${f.name}"${f.ph ? ` placeholder="${esc(f.ph)}"` : ''}`;
   switch (f.type) {
     case 'textarea': return `<textarea class="input" ${name} ${dis}>${esc(v)}</textarea>`;
     case 'select': return `<select class="input" ${name} ${dis}><option value=""></option>${f.options.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
@@ -147,8 +147,9 @@ async function openForm(entKey, id, defaults = {}, onSaved) {
   if (!id) for (const f of ent.fields) row[f.name] = defaults[f.name] ?? f.def ?? null;
   const ro = !!ent.readonly;
   const fields = ent.fields.filter(f => !f.hidden);
-  const body = `<form class="form-grid" autocomplete="off">${fields.map(f => `
-      <div class="${f.type === 'textarea' ? 'full' : ''}">
+  const body = `<form class="form-grid" autocomplete="off">${fields.map(f => `${f.section ? `
+      <div class="full form-section">${esc(f.section)}</div>` : ''}
+      <div class="${f.type === 'textarea' || f.full ? 'full' : ''}">
         ${f.type === 'bool' ? '' : `<label class="lb">${esc(f.label)} ${f.req ? '<span class="req">*</span>' : ''}</label>`}
         ${inputHTML(f, f.type === 'password' ? (id ? '' : undefined) : row[f.name], ro)}
       </div>`).join('')}</form>
