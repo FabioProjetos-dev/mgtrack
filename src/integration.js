@@ -2,12 +2,50 @@
 // Autenticação: header "Authorization: Bearer <INTEGRATION_TOKEN>".
 const express = require('express');
 const crypto = require('crypto');
-const { query, one, now } = require('./db');
+const { query, one, now, toBrt } = require('./db');
+const traccar = require('./traccar');
 const { HttpError, update } = require('./crud');
 const { TIPOS_EVENTO } = require('./schema');
 
 const DT_RE = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/;
 const num = v => (v === undefined || v === null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+
+// Alarmes do Traccar (position.attributes.alarm) → tipo de evento do MG-TRACK e descrição
+const ALARMES = {
+  sos: ['Botão de pânico'],
+  powerCut: ['Bateria violada', 'Alimentação cortada'],
+  powerOff: ['Bateria violada', 'Rastreador desligado'],
+  removing: ['Bateria violada', 'Rastreador removido'],
+  tampering: ['Bateria violada', 'Violação do rastreador'],
+  overspeed: ['Excesso de velocidade', 'Alarme de velocidade do rastreador'],
+  geofenceEnter: ['Entrada em cerca'],
+  geofenceExit: ['Saída de cerca'],
+  lowBattery: ['Alarme do rastreador', 'Bateria interna baixa'],
+  lowPower: ['Alarme do rastreador', 'Tensão da bateria do veículo baixa'],
+  powerRestored: ['Alarme do rastreador', 'Alimentação restaurada'],
+  vibration: ['Alarme do rastreador', 'Vibração'],
+  movement: ['Alarme do rastreador', 'Movimento'],
+  jamming: ['Alarme do rastreador', 'Sinal bloqueado (jammer)'],
+  gpsAntennaCut: ['Alarme do rastreador', 'Antena GPS cortada'],
+  tow: ['Alarme do rastreador', 'Reboque'],
+  accident: ['Alarme do rastreador', 'Acidente'],
+  door: ['Alarme do rastreador', 'Porta aberta'],
+  hardBraking: ['Alarme do rastreador', 'Frenagem brusca'],
+  hardAcceleration: ['Alarme do rastreador', 'Aceleração brusca'],
+  hardCornering: ['Alarme do rastreador', 'Curva brusca'],
+  fatigueDriving: ['Alarme do rastreador', 'Direção por tempo excessivo'],
+  general: ['Alarme do rastreador', 'Alarme'],
+};
+
+// Marca o comando como confirmado/falhou; bloqueio/desbloqueio confirmados atualizam o veículo e geram evento
+async function confirmCommand(c, status, resposta) {
+  await update('comandos', c.id, { status, data_resposta: now(), ...(resposta ? { resposta } : {}) });
+  if (status === 'Confirmado' && ['Bloquear', 'Desbloquear'].includes(c.comando)) {
+    const b = c.comando === 'Bloquear' ? 1 : 0;
+    await update('veiculos', c.veiculo_id, b ? { bloqueado: 1, velocidade: 0 } : { bloqueado: 0 });
+    await query('INSERT INTO eventos (veiculo_id, tipo, data, descricao, tratado) VALUES (?,?,?,?,0)', [c.veiculo_id, b ? 'Bloqueio' : 'Desbloqueio', now(), `Comando #${c.id} confirmado`]);
+  }
+}
 
 function makeIntegration() {
   const r = express.Router();
@@ -56,14 +94,51 @@ function makeIntegration() {
   // Confirma a execução de um comando: { status: "Confirmado" | "Falhou" }
   r.post('/comandos/:id/resposta', async (req, res) => {
     const id = parseInt(req.params.id, 10);
-    const status = req.body?.status === 'Falhou' ? 'Falhou' : 'Confirmado';
     const c = id && await one('SELECT * FROM comandos WHERE id = ?', [id]);
     if (!c) throw new HttpError(404, 'Comando não encontrado');
-    await update('comandos', id, { status, data_resposta: now() });
-    if (status === 'Confirmado' && ['Bloquear', 'Desbloquear'].includes(c.comando)) {
-      const b = c.comando === 'Bloquear' ? 1 : 0;
-      await update('veiculos', c.veiculo_id, b ? { bloqueado: 1, velocidade: 0 } : { bloqueado: 0 });
-      await query('INSERT INTO eventos (veiculo_id, tipo, data, descricao, tratado) VALUES (?,?,?,?,0)', [c.veiculo_id, b ? 'Bloqueio' : 'Desbloqueio', now(), `Comando #${id} confirmado`]);
+    await confirmCommand(c, req.body?.status === 'Falhou' ? 'Falhou' : 'Confirmado');
+    res.json({ ok: true });
+  });
+
+  // Eventos encaminhados pelo Traccar (traccar.xml: event.forward.url + event.forward.header)
+  // Corpo: { event: { type, eventTime, attributes }, position, device: { uniqueId }, geofence }
+  r.post('/traccar/eventos', async (req, res) => {
+    const { event, position: pos, device, geofence } = req.body || {};
+    const imei = String(device?.uniqueId || '').trim();
+    const v = imei && await one('SELECT v.* FROM veiculos v JOIN equipamentos e ON e.id = v.equipamento_id WHERE e.imei = ?', [imei]);
+    if (!v || !event?.type) return res.json({ ok: true, ignorado: !v ? 'IMEI não vinculado a veículo' : 'sem evento' });
+
+    // Atualiza a posição do veículo com a posição do evento (se for mais recente)
+    if (pos?.latitude != null) await traccar.applyRecords([traccar.toRecord({ uniqueId: imei, lastUpdate: pos.serverTime }, pos)]);
+
+    const data = toBrt(event.eventTime) || now();
+    const vel = pos?.speed != null ? Math.round(pos.speed * traccar.KNOT * 10) / 10 : null;
+    const evento = (tipo, descricao) => query('INSERT INTO eventos (veiculo_id, tipo, data, velocidade, lat, lng, descricao, tratado) VALUES (?,?,?,?,?,?,?,0)',
+      [v.id, tipo, data, vel, pos?.latitude ?? null, pos?.longitude ?? null, descricao ?? null]);
+
+    switch (event.type) {
+      case 'ignitionOn': await evento('Ignição ligada'); break;
+      case 'ignitionOff': await evento('Ignição desligada'); break;
+      case 'deviceOverspeed': await evento('Excesso de velocidade', `Velocidade ${vel ?? '?'} km/h - limite ${v.limite_velocidade ?? '?'} km/h`); break;
+      case 'geofenceEnter': await evento('Entrada em cerca', geofence?.name); break;
+      case 'geofenceExit': await evento('Saída de cerca', geofence?.name); break;
+      case 'alarm': {
+        const a = event.attributes?.alarm || pos?.attributes?.alarm || 'general';
+        for (const code of String(a).split(',')) {
+          const [tipo, desc] = Object.hasOwn(ALARMES, code) ? ALARMES[code] : ['Alarme do rastreador', code.slice(0, 60)];
+          await evento(tipo, desc);
+        }
+        break;
+      }
+      case 'commandResult': {
+        // Resposta do aparelho: confirma o último comando enviado a este veículo nas últimas 2 horas
+        const c = await one(`SELECT * FROM comandos WHERE veiculo_id = ? AND status IN ('Enviado','Pendente') AND data_envio >= ?
+          ORDER BY id DESC LIMIT 1`, [v.id, toBrt(Date.now() - 2 * 3600000)]);
+        const result = String(pos?.attributes?.result ?? event.attributes?.result ?? '').slice(0, 500);
+        if (c) await confirmCommand(c, 'Confirmado', result);
+        break;
+      }
+      default: break; // deviceOnline, deviceOffline, deviceMoving, deviceStopped... não geram evento no MG-TRACK
     }
     res.json({ ok: true });
   });

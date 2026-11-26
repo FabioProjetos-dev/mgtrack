@@ -181,7 +181,11 @@ const MONITOR_FILTERS = { todos: ['Todos', () => true], online: ['Online', v => 
   off24: ['≤24h', v => v.conexao === 'off24'], off36: ['≤36h', v => v.conexao === 'off36'], off36p: ['+36h', v => v.conexao === 'off36p'], bloq: ['Bloqueados', v => v.bloqueado] };
 
 async function sendCommand(veiculo_id, comando, parametros) {
-  try { await api('/e/comandos', { method: 'POST', body: { veiculo_id, comando, parametros } }); toast(`Comando "${comando}" enfileirado.`); }
+  try {
+    const c = await api('/e/comandos', { method: 'POST', body: { veiculo_id, comando, parametros } });
+    const msg = { Enviado: 'enviado ao rastreador', Pendente: 'na fila (será enviado quando o rastreador conectar)', Falhou: 'falhou' }[c.status] || c.status;
+    toast(`Comando "${comando}" ${msg}.${c.resposta ? ' ' + c.resposta : ''}`, c.status === 'Falhou');
+  }
   catch (e) { toast(e.message, true); }
 }
 function popupHTML(v) {
@@ -340,9 +344,9 @@ function commandPage(onlyOffline) {
       if (!chosen.size) return toast('Selecione ao menos um veículo.', true);
       const comando = $('[data-cmd-sel]', el).value, parametros = $('[data-param]', el).value;
       if (!await confirmDialog(`Enviar "${comando}" para ${chosen.size} veículo(s)?`)) return;
-      let ok = 0;
-      for (const id of chosen) { try { await api('/e/comandos', { method: 'POST', body: { veiculo_id: id, comando, parametros } }); ok++; } catch (e) { toast(e.message, true); } }
-      toast(`${ok} comando(s) enfileirado(s).`); chosen.clear(); render(); hist();
+      const n = { Enviado: 0, Pendente: 0, Falhou: 0 };
+      for (const id of chosen) { try { const c = await api('/e/comandos', { method: 'POST', body: { veiculo_id: id, comando, parametros } }); n[c.status] = (n[c.status] || 0) + 1; } catch (e) { n.Falhou++; toast(e.message, true); } }
+      toast(`${n.Enviado} enviado(s), ${n.Pendente} na fila, ${n.Falhou} com falha.`, n.Falhou > 0); chosen.clear(); render(); hist();
     };
     render(); hist();
     const iv = setInterval(hist, 15000); onLeave(() => clearInterval(iv));

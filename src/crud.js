@@ -1,6 +1,7 @@
 const express = require('express');
 const { E } = require('./schema');
 const { query, one, hashPassword, now, today, nowDate, fmtDate, NOW } = require('./db');
+const traccar = require('./traccar');
 
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 
@@ -70,6 +71,12 @@ async function log(user, acao, entidade, id, detalhes) {
     [now(), user?.nome || 'sistema', acao, entidade, id ?? null, detalhes == null ? null : String(detalhes).slice(0, 200)]);
 }
 
+// Falha no Traccar não impede salvar o cadastro (o aparelho pode ser ajustado depois no próprio Traccar)
+async function traccarSafe(what, fn) {
+  if (!traccar.enabled()) return;
+  try { await fn(); } catch (e) { console.error(`[traccar ${what}]`, e.message); }
+}
+
 // Regras de negócio executadas após gravar (this = req)
 const hooks = {
   async ordens_servico(row, isNew) {
@@ -81,7 +88,10 @@ const hooks = {
     const nome = (cat?.nome || '').toLowerCase();
     if (row.equipamento_id && nome.startsWith('instala')) {
       await update('equipamentos', row.equipamento_id, { status: 'Instalado' });
-      if (row.veiculo_id) await update('veiculos', row.veiculo_id, { equipamento_id: row.equipamento_id });
+      if (row.veiculo_id) {
+        await update('veiculos', row.veiculo_id, { equipamento_id: row.equipamento_id });
+        await traccarSafe('veículo', () => traccar.syncVehicle(row.veiculo_id));
+      }
     } else if (row.equipamento_id && nome.startsWith('retirada')) {
       await update('equipamentos', row.equipamento_id, { status: 'Retirado', estoque_id: row.estoque_id || null });
       if (row.veiculo_id) await query('UPDATE veiculos SET equipamento_id = NULL WHERE id = ? AND equipamento_id = ?', [row.veiculo_id, row.equipamento_id]);
@@ -94,8 +104,14 @@ const hooks = {
     await update('equipamentos', row.equipamento_id, { estoque_id: row.destino_id, status: 'Em estoque' });
   },
   async comandos(row, isNew) {
-    if (isNew) await update('comandos', row.id, { data_envio: row.data_envio || now(), usuario: row.usuario || this.user?.nome });
+    if (!isNew) return;
+    const upd = { data_envio: row.data_envio || now(), usuario: row.usuario || this.user?.nome };
+    // Com o Traccar configurado o comando vai na hora; sem ele, fica "Pendente" para o gateway buscar em /api/integracao/posicoes
+    if (traccar.enabled() && row.status === 'Pendente') Object.assign(upd, await traccar.sendCommand(row));
+    await update('comandos', row.id, upd);
   },
+  async equipamentos(row) { await traccarSafe('equipamento', () => traccar.ensureDevice(row.imei)); },
+  async veiculos(row) { if (row.equipamento_id) await traccarSafe('veículo', () => traccar.syncVehicle(row.id)); },
   async atendimentos(row, isNew) {
     if (isNew && !row.protocolo) await update('atendimentos', row.id, { protocolo: `${today().slice(0, 4)}${String(row.id).padStart(6, '0')}` });
     if (isNew && !row.data_abertura) await update('atendimentos', row.id, { data_abertura: now() });

@@ -32,7 +32,36 @@ Sem `DATABASE_URL`, o servidor local usa um Postgres embutido (PGlite) gravado e
 
 ## Integração com rastreadores
 
-Não há mais simulador. As posições chegam pela API de integração, chamada pelo servidor de comunicação dos rastreadores (GT06, Suntech, Teltonika etc.):
+### Traccar (recomendado)
+
+Os rastreadores (GT06/J16, Suntech etc.) se conectam a um servidor [Traccar](https://www.traccar.org) próprio, instalado numa VPS. O MG-TRACK conversa com ele assim:
+
+| O quê | Como |
+|---|---|
+| **Posições** | O MG-TRACK busca a última posição de todos os aparelhos em `GET /api/positions` do Traccar, no máximo a cada 15 s, enquanto alguém usa o monitoramento, o header ou o dashboard. Assim a Vercel não recebe uma chamada por posição. |
+| **Eventos** | O Traccar envia cada evento para `POST /api/integracao/traccar/eventos` (ignição, alarmes como SOS, corte de energia ou jammer, cercas, excesso de velocidade e resposta de comandos). |
+| **Comandos** | Bloquear, desbloquear, solicitar posição, reiniciar, configurar intervalo e personalizado saem na hora por `POST /api/commands/send`. Quando o protocolo não tem o tipo (o GT06 não tem "solicitar posição"), é enviado o texto equivalente (`WHERE#`, `RESET#`, `TIMER,s,s#`). Se o aparelho estiver desconectado, o comando fica **Pendente** no Traccar e sai quando ele reconectar. A resposta do aparelho marca o comando como **Confirmado**. |
+| **Cadastro** | Ao cadastrar um equipamento, o dispositivo é criado no Traccar pelo IMEI. Ao vinculá-lo a um veículo, o dispositivo recebe a placa como nome e o limite de velocidade do veículo. |
+
+**Configuração**
+
+1. Na Vercel, cadastre as variáveis:
+   - `TRACCAR_URL`, por exemplo `http://IP:8082`;
+   - `TRACCAR_TOKEN`, gerado no Traccar em *Configurações → Preferências → Token*;
+   - `INTEGRATION_TOKEN`.
+
+   Depois faça o redeploy.
+2. No Traccar, em `/opt/traccar/conf/traccar.xml`, inclua as linhas abaixo e rode `systemctl restart traccar`:
+   ```xml
+   <entry key='event.forward.url'>https://SEU-PROJETO.vercel.app/api/integracao/traccar/eventos</entry>
+   <entry key='event.forward.header'>Authorization: Bearer MESMO_VALOR_DO_INTEGRATION_TOKEN</entry>
+   ```
+3. Cadastre o **Equipamento** (IMEI) e vincule-o ao **Veículo**.
+4. Para conferir, abra `/api/traccar/status` logado no sistema. A resposta mostra se a conexão está ok e quantos dispositivos e veículos foram sincronizados.
+
+### Outro gateway (API genérica)
+
+Qualquer outro servidor de comunicação pode enviar posições diretamente:
 
 ```http
 POST /api/integracao/posicoes
@@ -73,7 +102,8 @@ src/schema.js        Esquema único das entidades → tabelas, API e formulário
 src/crud.js          API REST genérica, regras de negócio e ações
 src/dashboard.js     Dashboards, header e monitoramento
 src/reports.js       Relatórios
-src/integration.js   API para os rastreadores
+src/integration.js   API para os rastreadores e eventos do Traccar
+src/traccar.js       Cliente do Traccar: posições, comandos e dispositivos
 public/              Front-end (HTML/CSS/JS puro, servido pela CDN da Vercel)
 ```
 

@@ -7,7 +7,7 @@ function F(name, label, type = 'text', x = {}) {
 }
 const REQ = { req: true };
 const UF = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
-const TIPOS_EVENTO = ['Excesso de velocidade','Ignição ligada','Ignição desligada','Entrada em cerca','Saída de cerca','Bateria violada','Botão de pânico','Bloqueio','Desbloqueio','Equipamento sem sinal','Violação de âncora'];
+const TIPOS_EVENTO = ['Excesso de velocidade','Ignição ligada','Ignição desligada','Entrada em cerca','Saída de cerca','Bateria violada','Botão de pânico','Bloqueio','Desbloqueio','Equipamento sem sinal','Violação de âncora','Alarme do rastreador'];
 const CANAIS = ['SMS','WhatsApp','E-mail','Push'];
 
 const E = {
@@ -99,8 +99,9 @@ const E = {
     fields: [F('veiculo_id','Veículo','ref',{ ref: 'veiculos', req: true }),
       F('comando','Comando','select',{ options: ['Bloquear','Desbloquear','Solicitar posição','Reiniciar','Configurar intervalo','Personalizado'], req: true }),
       F('parametros','Parâmetros'), F('status','Status','select',{ options: ['Pendente','Enviado','Confirmado','Falhou'], def: 'Pendente' }),
-      F('data_envio','Data de envio','datetime'), F('data_resposta','Data da resposta','datetime'), F('usuario','Usuário')],
-    list: ['data_envio','veiculo_id','comando','parametros','status','data_resposta','usuario'] },
+      F('data_envio','Data de envio','datetime'), F('data_resposta','Data da resposta','datetime'), F('usuario','Usuário'),
+      F('resposta','Resposta do rastreador','textarea')],
+    list: ['data_envio','veiculo_id','comando','parametros','status','resposta','usuario'] },
   comandos_evento: { label: 'Comando de evento', plural: 'Comandos de eventos', title: 'tipo_evento',
     fields: [F('tipo_evento','Quando ocorrer','select',TIPOS_EVENTO), F('comando','Executar comando','select',['Bloquear','Desbloquear','Solicitar posição','Reiniciar']),
       F('grupo_id','Grupo de veículos','ref','grupos_veiculo'), F('ativo','Ativo','bool',{ def: 1 })],

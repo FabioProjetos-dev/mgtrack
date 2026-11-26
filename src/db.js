@@ -42,8 +42,9 @@ function getDriver() {
     // Sem DATABASE_URL: Postgres embutido (PGlite) gravando em ./data/pg — apenas para desenvolvimento local.
     const dir = process.env.PGLITE_DIR || path.join(__dirname, '..', 'data', 'pg');
     let dbp;
-    const get = () => (dbp ||= import('@electric-sql/pglite').then(({ PGlite }) => new PGlite(dir === 'memory' ? undefined : dir, { parsers: PARSERS })));
-    driver = { kind: 'pglite', query: async (sql, p) => (await get()).query(sql, p) };
+    const get = () => (dbp ||= import('@electric-sql/pglite').then(({ PGlite }) => new PGlite(dir === 'memory' ? undefined : dir)));
+    // Os conversores precisam ir em cada consulta (passados no construtor, o PGlite 0.3 os ignora)
+    driver = { kind: 'pglite', query: async (sql, p) => (await get()).query(sql, p, { parsers: PARSERS }) };
   }
   return driver;
 }
@@ -127,15 +128,19 @@ function checkPassword(pw, stored) {
 
 // Datas no fuso de Brasília
 const pad = n => String(n).padStart(2, '0');
-function now() {
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
-    .formatToParts(new Date()).map(x => [x.type, x.value]));
+const BRT_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+// Converte um instante (Date, ISO com fuso ou epoch) para "YYYY-MM-DD HH:MM:SS" no horário de Brasília
+function toBrt(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return null;
+  const p = Object.fromEntries(BRT_FMT.formatToParts(dt).map(x => [x.type, x.value]));
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
 }
+const now = () => toBrt(new Date());
 const today = () => now().slice(0, 10);
 // Date "local" representando o horário de Brasília (para aritmética de calendário)
 function nowDate() { const s = now(); return new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10), +s.slice(11, 13), +s.slice(14, 16), +s.slice(17, 19)); }
 function fmtDate(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
 function fmtDateTime(d) { return `${fmtDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
 
-module.exports = { query, one, ready, reset, getDriver, hashPassword, checkPassword, now, today, nowDate, fmtDate, fmtDateTime, NOW, TODAY, TZ };
+module.exports = { query, one, ready, reset, getDriver, hashPassword, checkPassword, now, toBrt, today, nowDate, fmtDate, fmtDateTime, NOW, TODAY, TZ };

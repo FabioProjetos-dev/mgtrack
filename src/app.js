@@ -7,6 +7,7 @@ const { makeCrud, HttpError, log } = require('./crud');
 const { makeDashboard } = require('./dashboard');
 const { makeReports } = require('./reports');
 const { makeIntegration } = require('./integration');
+const traccar = require('./traccar');
 
 const app = express();
 app.disable('x-powered-by');
@@ -81,6 +82,14 @@ app.put('/api/me', async (req, res) => {
   await query('UPDATE usuarios SET nome = ?, email = ? WHERE id = ?', [String(nome).trim(), email || null, req.user.id]);
   res.json({ ok: true });
 });
+
+// Posições do Traccar: atualiza os veículos (no máximo a cada 15 s) antes das telas que mostram posição/conexão
+const SYNC_PATHS = /^\/(monitor|header|dashboard\/gestao|e\/veiculos)(\/|$)/;
+app.use('/api', (req, res, next) => {
+  if (req.method === 'GET' && SYNC_PATHS.test(req.path)) traccar.syncIfStale().then(() => next());
+  else next();
+});
+app.get('/api/traccar/status', async (req, res) => res.json(await traccar.status()));
 
 app.use('/api', makeCrud());
 app.use('/api', makeDashboard());
